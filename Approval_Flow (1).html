@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Approval Flow</title>
+<style>
+  :root{
+    --paper:#EBEEF2; --surface:#FFFFFF; --surface-2:#F5F7FA;
+    --ink:#16202B; --ink-soft:#5A6878; --line:#DDE3EA;
+    --primary:#2B4C8C; --primary-soft:#E7ECF6;
+    --go:#16855A; --go-soft:#E2F1EA;
+    --stop:#C13B2F; --stop-soft:#FBE9E7;
+    --wait:#B7791F; --wait-soft:#FBF1DD;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --radius:10px; --shadow:0 1px 2px rgba(22,32,43,.06),0 4px 16px rgba(22,32,43,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer}
+  input,textarea,select{font-family:inherit;font-size:14px}
+
+  /* ---- top bar ---- */
+  header.bar{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;border-bottom:3px solid var(--primary)}
+  .bar-in{max-width:1080px;margin:0 auto;padding:0 20px;display:flex;align-items:center;gap:22px;height:56px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px;font-size:15px}
+  .brand .stamp{font-family:var(--mono);font-size:11px;border:1.5px solid #7d93b8;color:#cdd8ee;border-radius:4px;padding:2px 6px;transform:rotate(-4deg)}
+  nav.tabs{display:flex;gap:2px;margin-left:auto}
+  nav.tabs button{background:transparent;border:0;color:#aeb9c6;padding:8px 14px;border-radius:7px;font-size:13.5px;font-weight:600}
+  nav.tabs button:hover{color:#fff;background:rgba(255,255,255,.07)}
+  nav.tabs button.active{color:#fff;background:var(--primary)}
+
+  main{max-width:1080px;margin:0 auto;padding:26px 20px 80px}
+  .view{display:none}
+  .view.active{display:block}
+  h1.view-title{font-size:20px;margin:0 0 2px}
+  .view-sub{color:var(--ink-soft);margin:0 0 22px;font-size:13.5px}
+
+  /* ---- stats ---- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
+  .stat .n{font-family:var(--mono);font-size:24px;font-weight:600;line-height:1}
+  .stat .l{font-size:12px;color:var(--ink-soft);margin-top:6px;text-transform:uppercase;letter-spacing:.5px}
+  .stat.go .n{color:var(--go)} .stat.wait .n{color:var(--wait)} .stat.stop .n{color:var(--stop)}
+
+  /* ---- request cards ---- */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+  .card-head{display:flex;align-items:flex-start;gap:14px;padding:16px 18px;cursor:pointer}
+  .card-head:hover{background:var(--surface-2)}
+  .reqid{font-family:var(--mono);font-size:12px;color:var(--primary);font-weight:600;background:var(--primary-soft);padding:3px 8px;border-radius:5px;white-space:nowrap}
+  .card-title{font-weight:650;font-size:15px;margin:0}
+  .card-meta{color:var(--ink-soft);font-size:12.5px;margin-top:3px}
+  .grow{flex:1;min-width:0}
+
+  .badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .badge.go{background:var(--go-soft);color:var(--go)}
+  .badge.wait{background:var(--wait-soft);color:var(--wait)}
+  .badge.stop{background:var(--stop-soft);color:var(--stop)}
+  .pri{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid var(--line);color:var(--ink-soft)}
+  .pri.high{color:var(--stop);border-color:#f0c5c0}
+  .pri.urgent{color:#fff;background:var(--stop);border-color:var(--stop)}
+
+  /* ---- routing slip (signature element) ---- */
+  .routing{padding:6px 18px 18px;border-top:1px dashed var(--line)}
+  .track{display:flex;align-items:flex-start;overflow-x:auto;padding-top:14px;gap:0}
+  .station{display:flex;flex-direction:column;align-items:center;text-align:center;min-width:120px;flex:1;position:relative}
+  .station::before,.station::after{content:"";position:absolute;top:11px;height:2px;background:var(--line);width:50%}
+  .station::before{left:0} .station::after{right:0}
+  .station:first-child::before{display:none} .station:last-child::after{display:none}
+  .station.done::before,.station.done::after,.station.cur::before{background:var(--go)}
+  .dot{width:24px;height:24px;border-radius:50%;background:var(--surface);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink-soft);position:relative;z-index:1}
+  .station.done .dot{background:var(--go);border-color:var(--go);color:#fff}
+  .station.rej .dot{background:var(--stop);border-color:var(--stop);color:#fff}
+  .station.cur .dot{border-color:var(--primary);color:var(--primary);box-shadow:0 0 0 4px var(--primary-soft)}
+  .station.cur .dot{animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 4px var(--primary-soft)}50%{box-shadow:0 0 0 7px rgba(43,76,140,.10)}}
+  @media (prefers-reduced-motion:reduce){.station.cur .dot{animation:none}}
+  .st-name{font-size:12px;font-weight:650;margin-top:8px}
+  .st-who{font-size:11px;color:var(--ink-soft);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .st-tag{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+  .station.done .st-tag{color:var(--go)} .station.cur .st-tag{color:var(--primary)} .station.rej .st-tag{color:var(--stop)} .station.wait .st-tag{color:var(--ink-soft)}
+
+  /* ---- detail ---- */
+  .detail-section{padding:16px 18px;border-top:1px dashed var(--line)}
+  .detail-section h4{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft)}
+  .desc{white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:13.5px}
+  .timeline{list-style:none;margin:0;padding:0}
+  .timeline li{display:flex;gap:10px;padding:7px 0;font-size:13px;border-bottom:1px solid var(--surface-2)}
+  .timeline li:last-child{border-bottom:0}
+  .tl-time{font-family:var(--mono);font-size:11px;color:var(--ink-soft);white-space:nowrap;min-width:118px}
+  .tl-icon{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none;background:var(--ink-soft)}
+  .tl-icon.go{background:var(--go)} .tl-icon.stop{background:var(--stop)} .tl-icon.primary{background:var(--primary)}
+  .actions-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+  /* ---- buttons ---- */
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 16px;border-radius:8px;font-weight:600;font-size:13.5px;display:inline-flex;align-items:center;gap:7px}
+  .btn:hover{background:var(--surface-2)}
+  .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn.go{background:var(--go);border-color:var(--go);color:#fff} .btn.go:hover{filter:brightness(1.07)}
+  .btn.stop{background:var(--surface);border-color:#e2b3ad;color:var(--stop)} .btn.stop:hover{background:var(--stop-soft)}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--ink-soft)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.sm{padding:6px 11px;font-size:12.5px}
+
+  /* ---- forms ---- */
+  .form-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;max-width:760px}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:12.5px;font-weight:650;margin-bottom:6px}
+  .field label .req{color:var(--stop)}
+  .field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:var(--surface)}
+  .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .field textarea{min-height:84px;resize:vertical}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .hint{font-size:12px;color:var(--ink-soft);margin-top:5px}
+
+  /* stage builder */
+  .stage-row{display:grid;grid-template-columns:30px 1fr 1fr 1.2fr 32px;gap:8px;align-items:center;margin-bottom:8px}
+  .stage-row .sn{font-family:var(--mono);font-size:12px;color:var(--ink-soft);text-align:center}
+  .stage-row input{padding:7px 9px}
+  .xbtn{border:1px solid var(--line);background:var(--surface);border-radius:7px;width:32px;height:32px;color:var(--stop);font-size:16px;line-height:1}
+  .xbtn:hover{background:var(--stop-soft)}
+
+  .tmpl-pick{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .tmpl-pick .chip{border:1px solid var(--line);background:var(--surface);border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:600}
+  .tmpl-pick .chip:hover{border-color:var(--primary);color:var(--primary)}
+
+  /* ---- modal ---- */
+  .overlay{position:fixed;inset:0;background:rgba(22,32,43,.5);display:none;align-items:center;justify-content:center;z-index:40;padding:20px}
+  .overlay.show{display:flex}
+  .modal{background:var(--surface);border-radius:14px;max-width:600px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+  .modal-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .modal-head h3{margin:0;font-size:16px}
+  .modal-body{padding:20px 22px}
+  .modal-foot{padding:16px 22px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+  .mail-to{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin-bottom:10px;word-break:break-all}
+  .mail-sub{font-weight:650;margin-bottom:8px}
+  .mail-body{white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:13px;font-size:13px;line-height:1.55}
+  .note{font-size:12.5px;color:var(--ink-soft);background:var(--primary-soft);border-left:3px solid var(--primary);padding:9px 12px;border-radius:0 7px 7px 0;margin-bottom:14px}
+
+  .empty{text-align:center;color:var(--ink-soft);padding:60px 20px;border:1.5px dashed var(--line);border-radius:var(--radius);background:var(--surface)}
+  .empty .big{font-size:15px;font-weight:650;color:var(--ink);margin-bottom:6px}
+
+  .filter-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .filter-bar button{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink-soft)}
+  .filter-bar button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:9px;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:60;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+
+  .tmpl-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px;margin-bottom:12px}
+  .tmpl-card h4{margin:0 0 4px;font-size:15px}
+  .tmpl-stages{font-size:12.5px;color:var(--ink-soft);font-family:var(--mono)}
+
+  @media(max-width:680px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .row2{grid-template-columns:1fr}
+    .stage-row{grid-template-columns:24px 1fr 30px;grid-auto-flow:row}
+    .stage-row .sn{grid-row:span 3}
+    .stage-row .xbtn{grid-row:span 3}
+    .brand .stamp{display:none}
+    nav.tabs button{padding:8px 9px}
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">Approval&nbsp;Flow <span class="stamp">ROUTING&nbsp;SLIP</span></div>
+    <nav class="tabs">
+      <button data-tab="dashboard" class="active">Requests</button>
+      <button data-tab="new">New request</button>
+      <button data-tab="templates">Routes</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- DASHBOARD -->
+  <section id="view-dashboard" class="view active">
+    <h1 class="view-title">Requests</h1>
+    <p class="view-sub">Track every request as it moves stage by stage through its approval route.</p>
+    <div class="stats" id="stats"></div>
+    <div class="filter-bar" id="filters">
+      <button data-f="all" class="active">All</button>
+      <button data-f="pending">In progress</button>
+      <button data-f="approved">Approved</button>
+      <button data-f="rejected">Rejected</button>
+      <button id="export-all" class="btn sm" style="margin-left:auto;color:var(--ink)">⬇ Export all (Excel)</button>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <!-- NEW REQUEST -->
+  <section id="view-new" class="view">
+    <h1 class="view-title">New request</h1>
+    <p class="view-sub">Describe what needs sign-off, then lay out the route it should travel.</p>
+    <div class="form-card">
+      <div class="row2">
+        <div class="field">
+          <label>Title <span class="req">*</span></label>
+          <input id="f-title" placeholder="e.g. WMS config change — Manesar DC">
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <input id="f-cat" placeholder="e.g. Change request, Purchase, Access">
+        </div>
+      </div>
+      <div class="field">
+        <label>Details</label>
+        <textarea id="f-desc" placeholder="What is being requested, why, and any impact / cost."></textarea>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Your name <span class="req">*</span></label>
+          <input id="f-rname" placeholder="Requester name">
+        </div>
+        <div class="field">
+          <label>Your email</label>
+          <input id="f-remail" type="email" placeholder="requester@company.com">
+        </div>
+      </div>
+      <div class="field" style="max-width:240px">
+        <label>Priority</label>
+        <select id="f-pri">
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </select>
+      </div>
+
+      <div class="field" style="margin-top:6px">
+        <label>Approval route <span class="req">*</span></label>
+        <div class="hint" style="margin-bottom:10px">Pick a saved route, or build the stages below. The request goes to each approver in order.</div>
+        <div class="tmpl-pick" id="tmpl-pick"></div>
+        <div id="stage-builder"></div>
+        <button class="btn sm" id="add-stage" type="button">+ Add stage</button>
+      </div>
+
+      <div class="actions-row" style="margin-top:18px">
+        <button class="btn primary" id="submit-req">Create &amp; route for approval</button>
+        <button class="btn ghost" id="reset-req">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TEMPLATES / ROUTES -->
+  <section id="view-templates" class="view">
+    <h1 class="view-title">Routes</h1>
+    <p class="view-sub">Reusable approval chains so you don't rebuild the same stages every time.</p>
+    <div id="tmpl-list"></div>
+    <div class="form-card" style="margin-top:8px">
+      <div class="field">
+        <label>Route name <span class="req">*</span></label>
+        <input id="t-name" placeholder="e.g. Standard change approval">
+      </div>
+      <div class="field">
+        <label>Stages</label>
+        <div id="t-builder"></div>
+        <button class="btn sm" id="t-add-stage" type="button">+ Add stage</button>
+      </div>
+      <button class="btn primary" id="save-tmpl">Save route</button>
+    </div>
+  </section>
+</main>
+
+<!-- DETAIL MODAL -->
+<div class="overlay" id="detail-overlay">
+  <div class="modal" id="detail-modal"></div>
+</div>
+
+<!-- EMAIL MODAL -->
+<div class="overlay" id="mail-overlay">
+  <div class="modal">
+    <div class="modal-head"><h3 id="mail-title">Approval notification</h3></div>
+    <div class="modal-body">
+      <div class="note">This opens your default mail app with everything filled in, or copies the message so you can paste it. Nothing is sent automatically and no data leaves this page.</div>
+      <div class="mail-to" id="mail-to"></div>
+      <div class="mail-sub" id="mail-sub"></div>
+      <div class="mail-body" id="mail-body"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" id="mail-close">Close</button>
+      <button class="btn" id="mail-copy">Copy message</button>
+      <button class="btn primary" id="mail-open">Open in mail app</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+(function(){
+  const LS_REQ="approvalflow.requests.v1", LS_TMPL="approvalflow.templates.v1";
+  let requests=[], templates=[], filter="all", currentMail=null;
+
+  /* ---------- storage ---------- */
+  function load(){
+    try{ requests=JSON.parse(localStorage.getItem(LS_REQ))||[]; }catch(e){ requests=[]; }
+    try{ templates=JSON.parse(localStorage.getItem(LS_TMPL))||[]; }catch(e){ templates=[]; }
+    if(!templates.length){
+      templates=[
+        {id:"RT-1",name:"Standard change approval",stages:[
+          {name:"Team Lead",approverName:"",approverEmail:""},
+          {name:"Application Owner",approverName:"",approverEmail:""},
+          {name:"IT Manager",approverName:"",approverEmail:""}]},
+        {id:"RT-2",name:"Purchase / cost",stages:[
+          {name:"Manager",approverName:"",approverEmail:""},
+          {name:"Finance",approverName:"",approverEmail:""}]}
+      ];
+      saveTmpl();
+    }
+  }
+  function saveReq(){ localStorage.setItem(LS_REQ,JSON.stringify(requests)); }
+  function saveTmpl(){ localStorage.setItem(LS_TMPL,JSON.stringify(templates)); }
+
+  /* ---------- helpers ---------- */
+  const $=s=>document.querySelector(s);
+  const esc=s=>(s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  function nextId(){
+    let max=0; requests.forEach(r=>{const n=parseInt((r.id||"").replace(/\D/g,""),10); if(n>max)max=n;});
+    return "REQ-"+String(max+1).padStart(4,"0");
+  }
+  function fmt(ts){ if(!ts)return""; const d=new Date(ts);
+    return d.toLocaleDateString(undefined,{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"}); }
+  function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),2200); }
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{
+    document.querySelectorAll("nav.tabs button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    $("#view-"+b.dataset.tab).classList.add("active");
+    if(b.dataset.tab==="templates") renderTemplates();
+  }));
+
+  /* ---------- dashboard ---------- */
+  function renderStats(){
+    const pend=requests.filter(r=>r.status==="pending").length;
+    const ap=requests.filter(r=>r.status==="approved").length;
+    const rj=requests.filter(r=>r.status==="rejected").length;
+    $("#stats").innerHTML=`
+      <div class="stat"><div class="n">${requests.length}</div><div class="l">Total</div></div>
+      <div class="stat wait"><div class="n">${pend}</div><div class="l">In progress</div></div>
+      <div class="stat go"><div class="n">${ap}</div><div class="l">Approved</div></div>
+      <div class="stat stop"><div class="n">${rj}</div><div class="l">Rejected</div></div>`;
+  }
+  function statusBadge(r){
+    if(r.status==="approved")return `<span class="badge go">Approved</span>`;
+    if(r.status==="rejected")return `<span class="badge stop">Rejected</span>`;
+    return `<span class="badge wait">Stage ${r.currentStage+1} of ${r.stages.length}</span>`;
+  }
+  function trackHtml(r){
+    return `<div class="track">`+r.stages.map((s,i)=>{
+      let cls="wait",tag="Waiting";
+      if(s.status==="approved"){cls="done";tag="Approved";}
+      else if(s.status==="rejected"){cls="rej";tag="Rejected";}
+      else if(i===r.currentStage && r.status==="pending"){cls="cur";tag="Pending";}
+      const mark = s.status==="approved"?"✓":(s.status==="rejected"?"✕":(i+1));
+      return `<div class="station ${cls}">
+        <div class="dot">${mark}</div>
+        <div class="st-name">${esc(s.name)}</div>
+        <div class="st-who">${esc(s.approverName||s.approverEmail||"—")}</div>
+        <div class="st-tag">${tag}</div>
+      </div>`;
+    }).join("")+`</div>`;
+  }
+  function renderList(){
+    const fl=requests.filter(r=>filter==="all"?true:r.status===filter)
+                     .sort((a,b)=>b.createdAt-a.createdAt);
+    const wrap=$("#list");
+    if(!requests.length){
+      wrap.innerHTML=`<div class="empty"><div class="big">No requests yet</div>Create one from the “New request” tab to start routing approvals.</div>`;
+      return;
+    }
+    if(!fl.length){ wrap.innerHTML=`<div class="empty"><div class="big">Nothing here</div>No requests match this filter.</div>`; return; }
+    wrap.innerHTML=fl.map(r=>{
+      const p=(r.priority&&r.priority!=="normal")?`<span class="pri ${r.priority}">${esc(r.priority)}</span>`:"";
+      return `<div class="card">
+        <div class="card-head" data-open="${r.id}">
+          <span class="reqid">${esc(r.id)}</span>
+          <div class="grow">
+            <p class="card-title">${esc(r.title)}</p>
+            <div class="card-meta">${esc(r.requesterName)} · ${esc(r.category||"—")} · ${fmt(r.createdAt)}</div>
+          </div>
+          ${p} ${statusBadge(r)}
+        </div>
+        <div class="routing">${trackHtml(r)}</div>
+      </div>`;
+    }).join("");
+    wrap.querySelectorAll("[data-open]").forEach(el=>el.addEventListener("click",()=>openDetail(el.dataset.open)));
+  }
+  $("#filters").addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b||!b.dataset.f)return;
+    filter=b.dataset.f;
+    $("#filters").querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active"); renderList();
+  });
+
+  /* ---------- detail ---------- */
+  function openDetail(id){
+    const r=requests.find(x=>x.id===id); if(!r)return;
+    const active = r.status==="pending";
+    const cur = r.stages[r.currentStage];
+    const actions = active ? `
+      <div class="detail-section">
+        <h4>Decision — ${esc(cur.name)}${cur.approverName?" · "+esc(cur.approverName):""}</h4>
+        <div class="field"><label>Approval notes</label><textarea id="dec-comment" placeholder="Reason, conditions, references — saved with your decision and included in exports (optional)"></textarea></div>
+        <div class="actions-row">
+          <button class="btn go" id="do-approve">Approve this stage</button>
+          <button class="btn stop" id="do-reject">Reject</button>
+          <button class="btn sm ghost" id="resend">Resend notification</button>
+        </div>
+      </div>` : "";
+    $("#detail-modal").innerHTML=`
+      <div class="modal-head">
+        <span class="reqid">${esc(r.id)}</span>
+        <h3 style="flex:1">${esc(r.title)}</h3>
+        ${statusBadge(r)}
+        <button class="btn ghost sm" id="det-close">✕</button>
+      </div>
+      <div class="modal-body" style="padding:0">
+        <div class="detail-section">${trackHtml(r)}</div>
+        <div class="detail-section">
+          <h4>Details</h4>
+          <div class="card-meta" style="margin-bottom:10px">
+            Requested by ${esc(r.requesterName)}${r.requesterEmail?" · "+esc(r.requesterEmail):""} · ${fmt(r.createdAt)}
+            ${r.category?" · "+esc(r.category):""}${(r.priority&&r.priority!=="normal")?" · "+esc(r.priority)+" priority":""}
+          </div>
+          <div class="desc">${esc(r.description||"—")}</div>
+        </div>
+        ${actions}
+        <div class="detail-section">
+          <h4>History</h4>
+          <ul class="timeline">${r.audit.map(a=>`
+            <li><span class="tl-icon ${a.kind||''}"></span>
+              <span class="tl-time">${fmt(a.at)}</span>
+              <span>${esc(a.text)}</span></li>`).join("")}</ul>
+        </div>
+        <div class="detail-section" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <button class="btn sm" id="dl-req">⬇ Download Excel</button>
+          <button class="btn stop sm" id="del-req">Delete request</button>
+        </div>
+      </div>`;
+    $("#detail-overlay").classList.add("show");
+    $("#det-close").onclick=closeDetail;
+    $("#dl-req").onclick=()=>exportRequest(r);
+    $("#del-req").onclick=()=>{ if(confirm("Delete "+r.id+"?")){ requests=requests.filter(x=>x.id!==r.id); saveReq(); closeDetail(); refresh(); toast("Request deleted"); } };
+    if(active){
+      $("#do-approve").onclick=()=>decide(r,"approve");
+      $("#do-reject").onclick=()=>decide(r,"reject");
+      $("#resend").onclick=()=>showMail(buildStageMail(r,r.currentStage));
+    }
+  }
+  function closeDetail(){ $("#detail-overlay").classList.remove("show"); }
+  $("#detail-overlay").addEventListener("click",e=>{ if(e.target.id==="detail-overlay")closeDetail(); });
+
+  /* ---------- decisions ---------- */
+  function decide(r,kind){
+    const comment=($("#dec-comment")?.value||"").trim();
+    const stage=r.stages[r.currentStage];
+    const stamp=Date.now();
+    if(kind==="approve"){
+      stage.status="approved"; stage.decidedAt=stamp; stage.comment=comment;
+      r.audit.push({at:stamp,kind:"go",text:`Stage “${stage.name}” approved${stage.approverName?" by "+stage.approverName:""}${comment?" — "+comment:""}`});
+      if(r.currentStage < r.stages.length-1){
+        r.currentStage++;
+        saveReq(); closeDetail(); refresh();
+        showMail(buildStageMail(r,r.currentStage));   // notify next approver
+        toast("Approved — routed to next stage");
+      } else {
+        r.status="approved";
+        r.audit.push({at:stamp+1,kind:"go",text:"All stages cleared — request approved"});
+        saveReq(); closeDetail(); refresh();
+        showMail(buildOutcomeMail(r,"approved"));      // notify requester
+        toast("Fully approved");
+      }
+    } else {
+      stage.status="rejected"; stage.decidedAt=stamp; stage.comment=comment;
+      r.status="rejected";
+      r.audit.push({at:stamp,kind:"stop",text:`Rejected at “${stage.name}”${stage.approverName?" by "+stage.approverName:""}${comment?" — "+comment:""}`});
+      saveReq(); closeDetail(); refresh();
+      showMail(buildOutcomeMail(r,"rejected"));         // notify requester
+      toast("Request rejected");
+    }
+  }
+
+  /* ---------- email builders (mailto, no egress) ---------- */
+  function buildStageMail(r,idx){
+    const s=r.stages[idx];
+    const prior=r.stages.slice(0,idx).map(x=>`  • ${x.name}: approved${x.comment?" — "+x.comment:""}`).join("\n");
+    const sub=`[Approval needed] ${r.id} — ${r.title}`;
+    const body=
+`Hello ${s.approverName||""}`.trim()+`,
+
+A request is awaiting your approval at the "${s.name}" stage.
+
+Request ID : ${r.id}
+Title      : ${r.title}
+Category   : ${r.category||"—"}
+Priority   : ${r.priority||"normal"}
+Raised by  : ${r.requesterName}${r.requesterEmail?" <"+r.requesterEmail+">":""}
+
+Details:
+${r.description||"—"}
+`+(prior?`\nProgress so far:\n${prior}\n`:``)+
+`
+This is stage ${idx+1} of ${r.stages.length}. Please review and record your decision in Approval Flow.
+
+— Sent via Approval Flow`;
+    return {title:`Notify approver — ${s.name}`, to:s.approverEmail||"", subject:sub, body};
+  }
+  function buildOutcomeMail(r,outcome){
+    const ok=outcome==="approved";
+    const sub=`[${ok?"Approved":"Rejected"}] ${r.id} — ${r.title}`;
+    let trail=r.stages.map(x=>`  • ${x.name}: ${x.status}${x.comment?" — "+x.comment:""}`).join("\n");
+    const body=
+`Hello ${r.requesterName||""}`.trim()+`,
+
+Your request ${r.id} ("${r.title}") has been ${ok?"APPROVED":"REJECTED"}.
+
+Route outcome:
+${trail}
+
+— Sent via Approval Flow`;
+    return {title:`Notify requester — ${ok?"approved":"rejected"}`, to:r.requesterEmail||"", subject:sub, body};
+  }
+  function showMail(m){
+    currentMail=m;
+    $("#mail-title").textContent=m.title;
+    $("#mail-to").textContent="To: "+(m.to||"(no email on file — copy & address manually)");
+    $("#mail-sub").textContent=m.subject;
+    $("#mail-body").textContent=m.body;
+    $("#mail-overlay").classList.add("show");
+  }
+  $("#mail-close").onclick=()=>$("#mail-overlay").classList.remove("show");
+  $("#mail-overlay").addEventListener("click",e=>{ if(e.target.id==="mail-overlay")e.currentTarget.classList.remove("show"); });
+  $("#mail-open").onclick=()=>{
+    if(!currentMail)return;
+    const href="mailto:"+encodeURIComponent(currentMail.to)+
+      "?subject="+encodeURIComponent(currentMail.subject)+
+      "&body="+encodeURIComponent(currentMail.body);
+    window.location.href=href;
+  };
+  $("#mail-copy").onclick=async()=>{
+    if(!currentMail)return;
+    const txt=`To: ${currentMail.to}\nSubject: ${currentMail.subject}\n\n${currentMail.body}`;
+    try{ await navigator.clipboard.writeText(txt); toast("Message copied"); }
+    catch(e){
+      const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select();
+      try{ document.execCommand("copy"); toast("Message copied"); }catch(_){ toast("Copy failed — select manually"); }
+      ta.remove();
+    }
+  };
+
+  /* ---------- stage builder (new request) ---------- */
+  function stageRow(s){
+    s=s||{name:"",approverName:"",approverEmail:""};
+    const div=document.createElement("div");
+    div.className="stage-row";
+    div.innerHTML=`<span class="sn"></span>
+      <input class="s-name" placeholder="Stage (e.g. Manager)" value="${esc(s.name)}">
+      <input class="s-aname" placeholder="Approver name" value="${esc(s.approverName)}">
+      <input class="s-aemail" type="email" placeholder="approver@company.com" value="${esc(s.approverEmail)}">
+      <button class="xbtn" type="button" title="Remove">×</button>`;
+    div.querySelector(".xbtn").onclick=()=>{ div.remove(); renumber("#stage-builder"); };
+    return div;
+  }
+  function renumber(sel){ document.querySelectorAll(sel+" .stage-row .sn").forEach((e,i)=>e.textContent=i+1); }
+  function readStages(sel){
+    const out=[];
+    document.querySelectorAll(sel+" .stage-row").forEach(row=>{
+      const name=row.querySelector(".s-name").value.trim();
+      if(!name)return;
+      out.push({name,approverName:row.querySelector(".s-aname").value.trim(),approverEmail:row.querySelector(".s-aemail").value.trim()});
+    });
+    return out;
+  }
+  function loadStagesInto(sel,stages){
+    const b=$(sel); b.innerHTML="";
+    (stages&&stages.length?stages:[{}]).forEach(s=>b.appendChild(stageRow(s)));
+    renumber(sel);
+  }
+  $("#add-stage").onclick=()=>{ $("#stage-builder").appendChild(stageRow()); renumber("#stage-builder"); };
+
+  function renderTmplPicker(){
+    $("#tmpl-pick").innerHTML=templates.map(t=>`<button class="chip" type="button" data-t="${t.id}">${esc(t.name)}</button>`).join("")
+      || `<span class="hint">No saved routes yet — build stages below.</span>`;
+    $("#tmpl-pick").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
+      const t=templates.find(x=>x.id===c.dataset.t);
+      if(t){ loadStagesInto("#stage-builder",t.stages.map(s=>({...s}))); toast("Loaded route: "+t.name); }
+    });
+  }
+
+  $("#submit-req").onclick=()=>{
+    const title=$("#f-title").value.trim();
+    const rname=$("#f-rname").value.trim();
+    const stages=readStages("#stage-builder");
+    if(!title){ toast("Add a title"); $("#f-title").focus(); return; }
+    if(!rname){ toast("Add your name"); $("#f-rname").focus(); return; }
+    if(!stages.length){ toast("Add at least one approval stage"); return; }
+    stages.forEach((s,i)=>{ s.status=i===0?"pending":"waiting"; s.decidedAt=null; s.comment=""; });
+    const now=Date.now();
+    const r={
+      id:nextId(), title, category:$("#f-cat").value.trim(),
+      description:$("#f-desc").value.trim(),
+      requesterName:rname, requesterEmail:$("#f-remail").value.trim(),
+      priority:$("#f-pri").value, createdAt:now, status:"pending", currentStage:0,
+      stages, audit:[{at:now,kind:"primary",text:`Request created by ${rname} — routed to “${stages[0].name}”`}]
+    };
+    requests.push(r); saveReq();
+    resetForm();
+    document.querySelector('nav.tabs button[data-tab="dashboard"]').click();
+    refresh();
+    showMail(buildStageMail(r,0));   // notify first approver
+    toast(r.id+" created");
+  };
+  function resetForm(){
+    ["f-title","f-cat","f-desc","f-rname","f-remail"].forEach(id=>$("#"+id).value="");
+    $("#f-pri").value="normal"; loadStagesInto("#stage-builder",[{}]);
+  }
+  $("#reset-req").onclick=resetForm;
+
+  /* ---------- templates tab ---------- */
+  function renderTemplates(){
+    $("#tmpl-list").innerHTML = templates.length ? templates.map(t=>`
+      <div class="tmpl-card">
+        <div style="display:flex;align-items:center;gap:10px">
+          <h4 style="flex:1">${esc(t.name)}</h4>
+          <button class="btn stop sm" data-del="${t.id}">Delete</button>
+        </div>
+        <div class="tmpl-stages">${t.stages.map((s,i)=>`${i+1}. ${esc(s.name)}`).join("  →  ")}</div>
+      </div>`).join("") : `<div class="empty"><div class="big">No routes saved</div>Build one below to reuse it on new requests.</div>`;
+    $("#tmpl-list").querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+      templates=templates.filter(t=>t.id!==b.dataset.del); saveTmpl(); renderTemplates(); renderTmplPicker(); toast("Route deleted");
+    });
+    if(!$("#t-builder").children.length) loadStagesInto("#t-builder",[{}]);
+  }
+  $("#t-add-stage").onclick=()=>{
+    const div=stageRow(); div.querySelector(".xbtn").onclick=()=>{div.remove();renumber("#t-builder");};
+    $("#t-builder").appendChild(div); renumber("#t-builder");
+  };
+  $("#save-tmpl").onclick=()=>{
+    const name=$("#t-name").value.trim();
+    const stages=readStages("#t-builder");
+    if(!name){ toast("Name the route"); return; }
+    if(!stages.length){ toast("Add at least one stage"); return; }
+    templates.push({id:"RT-"+Date.now(),name,stages}); saveTmpl();
+    $("#t-name").value=""; loadStagesInto("#t-builder",[{}]);
+    renderTemplates(); renderTmplPicker(); toast("Route saved");
+  };
+
+  /* ---------- excel export (built-in .xlsx writer — fully offline) ---------- */
+  function fmtFull(ts){ if(!ts)return""; const d=new Date(ts);
+    return d.toLocaleString(undefined,{year:"numeric",month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit"}); }
+  function colName(n){ let s=""; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26);} return s; }
+  function xesc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+  function sheetXml(rows){
+    let o='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+    rows.forEach((row,ri)=>{
+      o+='<row r="'+(ri+1)+'">';
+      row.forEach((cell,ci)=>{
+        const ref=colName(ci)+(ri+1);
+        if(typeof cell==="number"&&isFinite(cell)) o+='<c r="'+ref+'"><v>'+cell+'</v></c>';
+        else o+='<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xesc(cell==null?"":cell)+'</t></is></c>';
+      });
+      o+='</row>';
+    });
+    return o+'</sheetData></worksheet>';
+  }
+  function crc32(bytes){
+    let t=crc32.t;
+    if(!t){ t=crc32.t=[]; for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; } }
+    let crc=0xFFFFFFFF;
+    for(let i=0;i<bytes.length;i++) crc=(crc>>>8)^t[(crc^bytes[i])&0xFF];
+    return (crc^0xFFFFFFFF)>>>0;
+  }
+  function makeXlsx(sheets){
+    const enc=new TextEncoder(), files=[];
+    const ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+      '<Default Extension="xml" ContentType="application/xml"/>'+
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+      sheets.map((s,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>';
+    files.push({name:'[Content_Types].xml',data:enc.encode(ct)});
+    files.push({name:'_rels/.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')});
+    const wb='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+
+      sheets.map((s,i)=>'<sheet name="'+xesc(s.name).slice(0,31)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('')+'</sheets></workbook>';
+    files.push({name:'xl/workbook.xml',data:enc.encode(wb)});
+    files.push({name:'xl/_rels/workbook.xml.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      sheets.map((s,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('')+'</Relationships>')});
+    sheets.forEach((s,i)=>files.push({name:'xl/worksheets/sheet'+(i+1)+'.xml',data:enc.encode(sheetXml(s.rows))}));
+
+    const chunks=[],central=[]; let offset=0;
+    const u16=v=>[v&255,(v>>8)&255], u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>24)&255];
+    files.forEach(f=>{
+      const nb=enc.encode(f.name), crc=crc32(f.data), sz=f.data.length;
+      const local=[].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(sz),u32(sz),u16(nb.length),u16(0));
+      chunks.push(new Uint8Array(local),nb,f.data);
+      central.push({head:new Uint8Array([].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(sz),u32(sz),u16(nb.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset))),name:nb});
+      offset+=local.length+nb.length+sz;
+    });
+    const cdStart=offset; let cdSize=0;
+    central.forEach(c=>{ chunks.push(c.head,c.name); cdSize+=c.head.length+c.name.length; });
+    chunks.push(new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cdSize),u32(cdStart),u16(0))));
+    let total=0; chunks.forEach(c=>total+=c.length);
+    const out=new Uint8Array(total); let p=0; chunks.forEach(c=>{ out.set(c,p); p+=c.length; });
+    return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  }
+  function downloadBlob(blob,filename){
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+  }
+  function exportRequest(r){
+    const meta=[["Field","Value"],
+      ["Request ID",r.id],["Title",r.title],["Category",r.category||""],
+      ["Priority",r.priority||"normal"],["Status",r.status],
+      ["Current stage", r.status==="pending"?(r.currentStage+1)+" of "+r.stages.length:"—"],
+      ["Requester",r.requesterName],["Requester email",r.requesterEmail||""],
+      ["Created",fmtFull(r.createdAt)],["Details",r.description||""]];
+    const route=[["Stage #","Stage","Approver","Approver email","Status","Decided","Approval notes"]]
+      .concat(r.stages.map((s,i)=>[i+1,s.name,s.approverName||"",s.approverEmail||"",s.status,fmtFull(s.decidedAt),s.comment||""]));
+    const hist=[["Time","Event"]].concat(r.audit.map(a=>[fmtFull(a.at),a.text]));
+    downloadBlob(makeXlsx([{name:"Request",rows:meta},{name:"Route",rows:route},{name:"History",rows:hist}]),
+      r.id+"_"+(r.title||"request").replace(/[^\w]+/g,"_").slice(0,40)+".xlsx");
+    toast("Excel downloaded");
+  }
+  function exportAll(){
+    if(!requests.length){ toast("No requests to export"); return; }
+    const reqRows=[["Request ID","Title","Category","Priority","Status","Current stage","Total stages","Requester","Requester email","Created"]];
+    const stageRows=[["Request ID","Title","Stage #","Stage","Approver","Approver email","Status","Decided","Approval notes"]];
+    const histRows=[["Request ID","Time","Event"]];
+    requests.slice().sort((a,b)=>a.createdAt-b.createdAt).forEach(r=>{
+      reqRows.push([r.id,r.title,r.category||"",r.priority||"normal",r.status,r.status==="pending"?(r.currentStage+1):"—",r.stages.length,r.requesterName,r.requesterEmail||"",fmtFull(r.createdAt)]);
+      r.stages.forEach((s,i)=>stageRows.push([r.id,r.title,i+1,s.name,s.approverName||"",s.approverEmail||"",s.status,fmtFull(s.decidedAt),s.comment||""]));
+      r.audit.forEach(a=>histRows.push([r.id,fmtFull(a.at),a.text]));
+    });
+    const d=new Date(), ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    downloadBlob(makeXlsx([{name:"Requests",rows:reqRows},{name:"Stages",rows:stageRows},{name:"History",rows:histRows}]),
+      "Approval_Flow_report_"+ds+".xlsx");
+    toast("Exported "+requests.length+" request"+(requests.length>1?"s":""));
+  }
+
+  /* ---------- boot ---------- */
+  function refresh(){ renderStats(); renderList(); }
+  $("#export-all").onclick=exportAll;
+  load();
+  loadStagesInto("#stage-builder",[{}]);
+  renderTmplPicker();
+  refresh();
+})();
+</script>
+</body>
+</html>
